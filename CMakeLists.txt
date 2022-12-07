@@ -12,10 +12,14 @@ set(CMAKE_C_COMPILER "gcc" CACHE STRING "default C compiler")
 project(FastqPuri)
 
 # Project's version
-set(VERSION "1.0")
+set(VERSION "1.0.8")
+
+message("-- Check the prefix for root installation: ${CMAKE_INSTALL_PREFIX}")
 
 # Set the output folder where your program will be created
-set(PROJECT_R_DIR ${CMAKE_SOURCE_DIR}/R)
+
+set(INSTALL_DIR ${CMAKE_INSTALL_PREFIX}/bin)
+set(INSTALL_R_DIR  ${CMAKE_INSTALL_PREFIX}/share/FastqPuri)
 set(PROJECT_SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
@@ -38,7 +42,7 @@ message("-- Check for pandoc: ${HAVE_PANDOC}")
 
 # R
 set(RSCRIPT "Rscript" CACHE STRING "Some user-specified option")
-find_program(RSCRIPT_EXEC ${RSCRIPT})
+find_program(RSCRIPT_EXEC NAMES ${RSCRIPT})
 message("-- Check for Rscript: ${RSCRIPT_EXEC}")
 
 #gunzip 
@@ -67,31 +71,23 @@ if(RSCRIPT_EXEC AND HAVE_PANDOC)
       set(HAVE_RPKG TRUE)
    endif(R_rmarkdown AND R_pheatmap AND R_knitr)
 endif(RSCRIPT_EXEC AND HAVE_PANDOC)
-
 #---------------------------------------------------------------
 # Setting defines. Can be modified with -DVARNAME in the command line 
 #---------------------------------------------------------------
 set(READ_MAXLEN 400 CACHE STRING "Illumina maximum read length")
 message("-- Setting Illumina maximum read length: READ_MAXLEN ${READ_MAXLEN}")
-
-set(RMD_QUALITY_REPORT ${PROJECT_R_DIR}/quality_report.Rmd CACHE STRING 
-   "Rmd quality report file")
+set(RMD_QUALITY_REPORT ${INSTALL_R_DIR}/R/quality_report.Rmd)
 message("-- Setting Rmd quality report file: ${RMD_QUALITY_REPORT}")
 
-set(RMD_SUMMARY_REPORT ${PROJECT_R_DIR}/summary_report.Rmd CACHE STRING 
-   "Rmd summary report file")
+set(RMD_SUMMARY_REPORT ${INSTALL_R_DIR}/R/summary_report.Rmd)
 message("-- Setting Rmd summary report file: ${RMD_SUMMARY_REPORT}")
 
-set(RMD_SUMMARY_FILTER_REPORT ${PROJECT_R_DIR}/summary_filter_report.Rmd 
-   CACHE STRING  "Rmd summary filter report file")
+set(RMD_SUMMARY_FILTER_REPORT ${INSTALL_R_DIR}/R/summary_filter_report.Rmd )
 message("-- Setting Rmd summary filter report file: ${RMD_SUMMARY_FILTER_REPORT}")
 
-set(RMD_SUMMARY_FILTER_REPORTDS ${PROJECT_R_DIR}/summary_filter_reportDS.Rmd 
-   CACHE STRING  "Rmd summary filter report file for DS data")
+set(RMD_SUMMARY_FILTER_REPORTDS ${INSTALL_R_DIR}/R/summary_filter_reportDS.Rmd )
 message("-- Setting Rmd summary filter report file for DS data: ${RMD_SUMMARY_FILTER_REPORTDS}")
 #MISSING SETTING MEMORY ROOF!!! 
-
-
 
 #---------------------------------------------------------------
 # Compiler flags, linker flags and rules
@@ -104,18 +100,20 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 
 # Set compiler flags
-set(CMAKE_C_FLAGS  "-Wall -Wextra -O3 -march=native -std=c11") 
+set(CMAKE_C_FLAGS  "-Wall -Wextra -O3 -march=native -std=c11 -D_DEFAULT_SOURCE") 
 message("-- Setting compiler flags: ${CMAKE_C_FLAGS}")
 
 # Set linker flags
-set(CMAKE_C_LINK_FLAGS  "" )
+#set(CMAKE_C_LINK_FLAGS  "" )
 #set(CMAKE_C_LINK_FLAGS  "-lm")
+set(CMAKE_C_STANDARD_LIBRARIES "-lm")
 
 # Include directories
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}")
 
 # Add executables 
 add_executable(Qreport ${PROJECT_SOURCE_DIR}/Qreport.c 
+            ${PROJECT_SOURCE_DIR}/copy_file.c
             ${PROJECT_SOURCE_DIR}/fopen_gen.c
             ${PROJECT_SOURCE_DIR}/fq_read.c
             ${PROJECT_SOURCE_DIR}/init_Qreport.c
@@ -125,6 +123,7 @@ add_executable(Qreport ${PROJECT_SOURCE_DIR}/Qreport.c
             ${PROJECT_SOURCE_DIR}/str_manip.c )
 
 add_executable(Sreport ${PROJECT_SOURCE_DIR}/Sreport.c
+            ${PROJECT_SOURCE_DIR}/copy_file.c
             ${PROJECT_SOURCE_DIR}/init_Sreport.c
             ${PROJECT_SOURCE_DIR}/str_manip.c 
             ${PROJECT_SOURCE_DIR}/Rcommand_Sreport.c)
@@ -190,5 +189,17 @@ if ( NOT HAVE_RPKG )
    message("             Check that you have installed: ")
    message("               - Rscript ")
    message("               - pandoc")
-   message("               - R packages: rmarkdown, pheatmap")
-endif() 
+   message("               - R packages: rmarkdown, knitr, pheatmap")
+endif()
+
+
+# Make install programs
+install(PROGRAMS bin/Qreport DESTINATION ${INSTALL_DIR}/)
+install(PROGRAMS bin/Sreport DESTINATION ${INSTALL_DIR}/)
+install(PROGRAMS bin/makeTree DESTINATION ${INSTALL_DIR}/)
+install(PROGRAMS bin/trimFilter DESTINATION ${INSTALL_DIR}/)
+install(PROGRAMS bin/trimFilterPE DESTINATION ${INSTALL_DIR}/)
+install(PROGRAMS bin/makeBloom DESTINATION ${INSTALL_DIR}/)
+
+# Make install R scripts 
+install(DIRECTORY R DESTINATION ${INSTALL_R_DIR})

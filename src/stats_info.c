@@ -48,27 +48,55 @@ extern Iparam_Qreport par_QR; /*< input parameters */
  * Only Illumina sequence identifiers are allowed.
  * The line is inspected, and the number of ':' is obtained.
  * The function exits with an error if the number of semicolons
- * is different from 4 or 9.
+ * is different from 4, 6 or 9.
  * */
-void get_tile_lane(char *line1, int *tile, int *lane) {
+void get_tile_lane(char *line1, int *tile, int *lane, int skip_tile_search) {
+  if (skip_tile_search) {
+    tile[0] = -1;
+    lane[0] = -1;
+    return;
+  }
   int ncolon = count_char(line1, ':');
-  int aux_int;
+  int aux_int, res;
   char aux_str1[100], aux_str2[40], end_str[200];
-  if (ncolon == 4) {
-     sscanf(line1, "%100[^:]:%d:%d:%s", aux_str1, lane, tile, end_str);
-  } else if (ncolon == 9) {
+  if (ncolon == 4) { // pure Illumina header
+     res = sscanf(line1, "%100[^:]:%d:%d:%s", aux_str1, lane, tile, end_str);
+     if (res < 4) {
+       fprintf(stderr, "Error encountered when trying to obtain lane and tile number in the following fastq-header:\n%s\n", line1);
+       fprintf(stderr, "FastqPuri/Qreport only supports Illumina fastq headers like this:\n");
+       fprintf(stderr, "@HWUSI-EAS100R:6:73:941:1973#0/1\n");
+       fprintf(stderr, "From 4 expected items only %d are scanned correctly, revise the format of your fastq file.\n", res);
+       fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+       fprintf(stderr, "Exiting program.\n");
+       exit(EXIT_FAILURE);
+     }
+  } else if (ncolon == 6) { // current Illumina from SRA/NCBI
      // I hope that the second entry is an integer.
-     sscanf(line1, "%100[^:]:%d:%40[^:]:%d:%d:%s",
-             aux_str1, &aux_int, aux_str2, lane , tile, end_str);
+    res = sscanf(line1, "%100[^:]:%d:%40[^:]:%d:%d:%s", aux_str1, &aux_int, aux_str2, lane , tile, end_str);
+    if (res < 6) {
+      fprintf(stderr, "Error encountered when trying to obtain lane and tile number in the following fastq-header:\n%s\n", line1);
+      fprintf(stderr,  "FastqPuri/Qreport only supports Illumina headers as stored in SRA/NCBI like this:\n");
+      fprintf(stderr, "@EAS139:136:FC706VJ:2:2104:15343:197393\n");
+      fprintf(stderr, "From 6 expected items only %d are scanned correctly, revise the format of your fastq file.\n", res);
+      fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+      fprintf(stderr, "Exiting program.\n");
+      exit(EXIT_FAILURE);
+    }
+  } else if (ncolon == 9) { // current Illumina
+    // I hope that the second entry is an integer.
+    res = sscanf(line1, "%100[^:]:%d:%40[^:]:%d:%d:%s", aux_str1, &aux_int, aux_str2, lane , tile, end_str);
+    if (res < 6) {
+      fprintf(stderr, "Error encountered when trying to obtain lane and tile number in the following fastq-header:\n%s\n", line1);
+      fprintf(stderr, "FastqPuri/Qreport only supports Illumina headers like this:\n");
+      fprintf(stderr, "@EAS139:136:FC706VJ:2:2104:15343:197393 1:Y:18:ATCACG\n");
+      fprintf(stderr, "From 6 expected items only %d are scanned correctly, revise the format of your fastq file.\n", res);
+      fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+      fprintf(stderr, "Exiting program.\n");
+      exit(EXIT_FAILURE);
+     }
   } else {
-    fprintf(stderr, "Error encountered when trying to obtain tile number.\n");
-    fprintf(stderr, "This code only supports Illumina sequence identifiers:\n");
-    fprintf(stderr, "@HWUSI-EAS100R:6:73:941:1973#0/1\n");
-    fprintf(stderr, "@EAS139:136:FC706VJ:2:2104:15343:197393 1:Y:18:ATCACG\n");
-    fprintf(stderr, "Please revise the format of your fastq file\n");
-    fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
-    fprintf(stderr, "Exiting program.\n");
-    exit(EXIT_FAILURE);
+    tile[0] = -1;
+    lane[0] = -1;
   }
 }
 
@@ -103,8 +131,8 @@ static int cmpfunc(const void * a, const void * b) {
 void init_info(Info *res) {
   int i;
 
-  // Inizialize dimensions
-  res -> sz_lowQ_ACGT_tile = N_ACGT * par_QR.ntiles;
+  // Inizialize dimensions 
+ res -> sz_lowQ_ACGT_tile = N_ACGT * par_QR.ntiles;
   res -> sz_ACGT_tile = N_ACGT * par_QR.ntiles;
   res -> sz_reads_MlowQ = par_QR.read_len + 1;
   res -> sz_QPosTile_table = par_QR.ntiles * par_QR.read_len * par_QR.nQ;
@@ -113,25 +141,51 @@ void init_info(Info *res) {
   // Allocate memory
   res -> tile_tags = (int*) calloc(par_QR.ntiles , sizeof(int));
   res -> lane_tags = (int*) calloc(par_QR.ntiles , sizeof(int));
-  res -> qual_tags = (int*) malloc(par_QR.nQ * sizeof(int));
+  res -> qual_tags = (int*) calloc(par_QR.nQ, sizeof(int));
   for ( i = 0 ; i < par_QR.nQ ; i++) res -> qual_tags[i] = i;
-  res -> lowQ_ACGT_tile = (uint64_t*) calloc(res -> sz_lowQ_ACGT_tile,
-                          sizeof(uint64_t));
-  res -> ACGT_tile = (uint64_t*) calloc(res -> sz_ACGT_tile,
-                     sizeof(uint64_t));
-  res -> reads_MlowQ = (uint64_t*) calloc(res -> sz_reads_MlowQ,
-                       sizeof(uint64_t));
-  res -> QPosTile_table = (uint64_t*) calloc(res -> sz_QPosTile_table,
-                          sizeof(uint64_t));
-  res -> ACGT_pos = (uint64_t*) calloc(res -> sz_ACGT_pos,
-                    sizeof(uint64_t));
+  res -> lowQ_ACGT_tile = (uint64_t*) calloc(res -> sz_lowQ_ACGT_tile, sizeof(uint64_t));
+  res -> ACGT_tile = (uint64_t*) calloc(res -> sz_ACGT_tile, sizeof(uint64_t));
+  res -> reads_MlowQ = (uint64_t*) calloc(res -> sz_reads_MlowQ, sizeof(uint64_t));
+  res -> QPosTile_table = (uint64_t*) calloc(res -> sz_QPosTile_table, sizeof(uint64_t));
+  res -> ACGT_pos = (uint64_t*) calloc(res -> sz_ACGT_pos, sizeof(uint64_t));
 
   // Initializations
   res -> nQ = par_QR.nQ;
+  res -> zeroQ = par_QR.zeroQ;
   res -> read_len = par_QR.read_len;
   res -> ntiles = par_QR.ntiles;
   res -> tile_pos = 0;
   res -> minQ = par_QR.minQ;
+
+  char aux_str1[MAX_FILENAME];
+  int aux_int, min_int, max_int;
+  res->nLowQprops = count_char(par_QR.lowQprops, ',');
+  if (res->nLowQprops == 0) { // check <min_int>:<max_int> format
+    sscanf(par_QR.lowQprops, "%d:%d", &min_int, &max_int);
+    if (min_int < max_int) {
+      res->nLowQprops = max_int - min_int + 1;
+      res->lowQprops = (int*) calloc(res->nLowQprops, sizeof(int));
+      for (i = 0; i <= max_int-min_int; i++) {
+	res->lowQprops[i] = min_int + i;
+      }
+    } else {
+      fprintf(stderr, "Fix incorrect format of parameter -Q (%s).\n", par_QR.lowQprops);
+      fprintf(stderr, "Correct is <min_int>:<max_int> but minimum  (%d) is above maximum (%d). Exiting program.\n", min_int, max_int);
+      fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    snprintf(aux_str1, MAX_FILENAME, "%s", par_QR.lowQprops);
+    res->lowQprops = (int*) calloc(res->nLowQprops + 1, sizeof(int));
+    for (i = 0; i < res->nLowQprops; i++) {
+      sscanf(aux_str1, "%d,%s", &aux_int, aux_str1);
+      res->lowQprops[i] = aux_int;
+    }
+    sscanf(aux_str1, "%d", &aux_int);
+    res->lowQprops[res->nLowQprops] = aux_int;
+    res->nLowQprops++;
+  }
+  
   res -> nreads = 0;
   res -> reads_wN = 0;
 }
@@ -147,6 +201,7 @@ void free_info(Info* res) {
   free(res -> ACGT_tile);
   free(res -> reads_MlowQ);
   free(res -> QPosTile_table);
+  free(res -> lowQprops);
   free(res -> ACGT_pos);
   free(res);
 }
@@ -160,7 +215,9 @@ void read_info(Info *res, char *file) {
   fread(&(res -> read_len), sizeof(int), 1, f);
   fread(&(res -> ntiles), sizeof(int), 1, f);
   fread(&(res -> minQ), sizeof(int), 1, f);
+  fread(&(res -> nLowQprops), sizeof(int), 1, f);
   fread(&(res -> nQ), sizeof(int), 1, f);
+  fread(&(res -> zeroQ), sizeof(int), 1, f);
   fread(&(res -> nreads), sizeof(int), 1, f);
   fread(&(res -> reads_wN), sizeof(int), 1, f);
   fread(&(res -> sz_lowQ_ACGT_tile), sizeof(size_t), 1, f);
@@ -170,21 +227,18 @@ void read_info(Info *res, char *file) {
   fread(&(res -> sz_ACGT_pos), sizeof(size_t), 1, f);
 
   // Allocate memory
-  res -> tile_tags = (int*) malloc(res -> ntiles);
-  res -> lane_tags = (int*) malloc(res -> ntiles);
-  res -> qual_tags = (int*) malloc(res -> nQ);
-  res -> lowQ_ACGT_tile = (uint64_t*) malloc(
-        (res -> sz_lowQ_ACGT_tile) * sizeof(uint64_t));
-  res -> ACGT_tile = (uint64_t*) malloc(
-         (res -> sz_ACGT_tile) * sizeof(uint64_t));
-  res -> reads_MlowQ = (uint64_t*) malloc(
-         (res -> sz_reads_MlowQ) * sizeof(uint64_t));
-  res -> QPosTile_table = (uint64_t*) malloc(
-         (res -> sz_QPosTile_table) * sizeof(uint64_t));
-  res -> ACGT_pos = (uint64_t*) malloc(
-         (res -> sz_ACGT_pos) * sizeof(uint64_t));
+  res -> lowQprops = (int*) calloc(res -> nLowQprops, sizeof(int));
+  res -> tile_tags = (int*) calloc(res -> ntiles, sizeof(int));
+  res -> lane_tags = (int*) calloc(res -> ntiles, sizeof(int));
+  res -> qual_tags = (int*) calloc(res -> nQ, sizeof(int));
+  res -> lowQ_ACGT_tile = (uint64_t*) calloc(res -> sz_lowQ_ACGT_tile, sizeof(uint64_t));
+  res -> ACGT_tile = (uint64_t*) calloc(res -> sz_ACGT_tile, sizeof(uint64_t));
+  res -> reads_MlowQ = (uint64_t*) calloc(res -> sz_reads_MlowQ, sizeof(uint64_t));
+  res -> QPosTile_table = (uint64_t*) calloc(res -> sz_QPosTile_table, sizeof(uint64_t));
+  res -> ACGT_pos = (uint64_t*) calloc(res -> sz_ACGT_pos, sizeof(uint64_t));
 
   // Read arrays
+  fread(res -> lowQprops, sizeof(int), res->nLowQprops, f);
   fread(res -> tile_tags, sizeof(int), res->ntiles, f);
   fread(res -> lane_tags, sizeof(int), res->ntiles, f);
   fread(res -> qual_tags, sizeof(int), res->nQ, f);
@@ -206,7 +260,9 @@ void write_info(Info *res, char *file) {
   fwrite(&(res -> read_len), sizeof(int), 1, f);
   fwrite(&(res -> ntiles), sizeof(int), 1, f);
   fwrite(&(res -> minQ), sizeof(int), 1, f);
+  fwrite(&(res -> nLowQprops), sizeof(int), 1, f);
   fwrite(&(res -> nQ), sizeof(int), 1, f);
+  fwrite(&(res -> zeroQ), sizeof(int), 1, f);
   fwrite(&(res -> nreads), sizeof(int), 1, f);
   fwrite(&(res -> reads_wN), sizeof(int), 1, f);
 
@@ -216,7 +272,7 @@ void write_info(Info *res, char *file) {
   fwrite(&(res -> sz_QPosTile_table), sizeof(int), 1, f);
   fwrite(&(res -> sz_ACGT_pos), sizeof(int), 1, f);
 
-
+  fwrite(res -> lowQprops, sizeof(int), res->nLowQprops, f);
   fwrite(res -> tile_tags, sizeof(int), res->ntiles, f);
   fwrite(res -> lane_tags, sizeof(int), res->ntiles, f);
   fwrite(res -> qual_tags, sizeof(int), res->nQ, f);
@@ -240,12 +296,12 @@ void print_info(Info* res, char *infofile) {
   fprintf(f, "- Read length: %d\n", res -> read_len);
   fprintf(f, "- Number of tiles x lanes: %d\n", res -> ntiles);
   fprintf(f, "- Total number of reads: %d\n", res -> nreads);
-  fprintf(f, "- Number associated with the first tile: %d\n",
-             res -> tile_tags[0]);
-  fprintf(f, "- Number associated with the first lane: %d\n",
-             res -> lane_tags[0]);
-  fprintf(f, "- Min Quality: %d\n", res -> minQ);
-  fprintf(f, "- Number of ACGT in the first tile: \n");
+  fprintf(f, "- Number associated with the first tile: %d\n", res->tile_tags[0]);
+  fprintf(f, "- Number associated with the first lane: %d\n", res->lane_tags[0]);
+  fprintf(f, "- Min Quality: %d\n", res->minQ);
+  fprintf(f, "- Quality values for quality proportaion plots (%d):", res->nLowQprops);
+  for (i = 0; i < res->nLowQprops; i++) fprintf(f, "%d,", res->lowQprops[i]);
+  fprintf(f, "\n- Number of ACGT in the first tile: \n");
   fprintf(f, "  A = %" PRIu64 ", C = %" PRIu64 ", G = %" PRIu64 
         ", T = %" PRIu64 " , N = %" PRIu64 "\n",
         res -> ACGT_tile[0],
@@ -267,7 +323,7 @@ void print_info(Info* res, char *infofile) {
   for (j = 1 ; j <= (uint32_t)(res -> read_len); j++) fprintf(f, "%d ", j);
   fprintf(f, "\n");
   for (i = 0; i < (res -> nQ); i++) {
-     fprintf(f, "  Q = %c : ", (char) (res -> qual_tags[i] + ZEROQ));
+     fprintf(f, "  Q = %c : ", (char) (res->qual_tags[i] + res->zeroQ));
      for (j = 0 ; j< (uint32_t)(res -> read_len); j++) {
         fprintf(f, "%" PRIu64, 
               res -> QPosTile_table[i*(res -> read_len) +j]);
@@ -310,7 +366,12 @@ void print_info(Info* res, char *infofile) {
  * @brief gets first tile
  * */
 void get_first_tile(Info* res, Fq_read* seq) {
-  get_tile_lane(seq ->line1, res->tile_tags, res->lane_tags);
+  get_tile_lane(seq->line1, res->tile_tags, res->lane_tags, 0); // 0 means let search tile number
+  //  fprintf(stderr, "First tile is %d\n", res->tile_tags[0]);
+  if (res->tile_tags[0] == -1) {
+    fprintf(stderr, "Warning: tile number not found in the following fastq-header:\n%s\n", seq->line1);
+    fprintf(stderr, "FastqPuri/Qreport neglects information and plots based on tile numbers.\n");
+  }
 }
 
 /**
@@ -319,38 +380,53 @@ void get_first_tile(Info* res, Fq_read* seq) {
 void update_info(Info* res, Fq_read* seq) {
   int i;
   uint64_t  lowQ = 0;
-  int min_quality = ZEROQ + (res -> minQ);
-  int tile, lane;
-  get_tile_lane(seq -> line1, &tile, &lane);
+  int min_quality = res->zeroQ + (res->minQ);
+  int tile, lane, curr_tile_pos;
+  int skip_tile_search = (res->tile_tags[0]==-1)?1:0;  // 0: search tile number, 1: skip tile number search
+  get_tile_lane(seq -> line1, &tile, &lane, skip_tile_search);
+
+  curr_tile_pos = res->tile_pos;
+  if (!skip_tile_search) {
+    // check if tile/lane exists already
+    for (i = res->tile_pos; i >= 0; i--) {
+      //fprintf(stderr, "- Check tile position %d with %d/%d\n",  i, res->tile_tags[i], res->lane_tags[i]);
+      if (res->tile_tags[i] == tile && res->lane_tags[i] == lane) {
+	//fprnitf(stderr, " !! tile/lane already found\n");
+	curr_tile_pos = i;
+	break;
+      }
+    }
+    //fprintf(stderr, "Tile/lane %d/%d is found in %d (%d/%d)\n", tile, lane, curr_tile_pos, res->tile_tags[curr_tile_pos], res->lane_tags[curr_tile_pos]);
+    //if (res->tile_tags[curr_tile_pos] != tile || res->lane_tags[curr_tile_pos] != lane) {
+    //  fprintf(stderr, " !! tile/lane not yet found, curr_tile_pos %d == %d ?\n", curr_tile_pos, res->tile_pos);
+    //}
+  }
   int Ns = 0;
-  if (res -> tile_tags[res -> tile_pos ] != tile ||
-      res -> lane_tags[res -> tile_pos ] != lane) {
-     (res -> tile_pos)++;
-     if ( (res -> tile_pos) == (res -> ntiles) ) {
-       fprintf(stderr, "Expected number of tiles = %d \n", res -> ntiles);
-       fprintf(stderr, "It seems like your input file has more tiles.\n");
-       fprintf(stderr, "Maybe more than one lane?\n");
-       fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
-       fprintf(stderr, "Exiting program.\n");
-       exit(EXIT_FAILURE);
-     }
-     res -> tile_tags[res -> tile_pos] = tile;
-     res -> lane_tags[res -> tile_pos] = lane;
+  if (res->tile_tags[curr_tile_pos] != tile || res->lane_tags[curr_tile_pos] != lane) {
+    (res->tile_pos)++; curr_tile_pos++;
+    if ((res->tile_pos) == (res->ntiles)) {
+      fprintf(stderr, "Expected number of tiles is %d \n", res->ntiles);
+      fprintf(stderr, "Your input file seems to have more tiles. Maybe more than one lane?\n");
+      fprintf(stderr, "You can try to adapt Qreport using the parameter -t.\n");
+      fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+      fprintf(stderr, "Exiting program.\n");
+      exit(EXIT_FAILURE);
+    }
+    res->tile_tags[res->tile_pos] = tile;
+    res->lane_tags[res->tile_pos] = lane;
   }
-  for (i = 0 ; i < seq -> L; i++) {
-     Ns += update_ACGT_counts(res -> ACGT_tile + (res -> tile_pos)*N_ACGT,
-           seq -> line2[i]);
-     if (seq -> line4[i] < min_quality) {
-        update_ACGT_counts(res -> lowQ_ACGT_tile + (res -> tile_pos)*N_ACGT,
-              seq -> line2[i]);
-        lowQ++;
-     }
+  for (i = 0; i < seq->L; i++) {
+    Ns += update_ACGT_counts(res->ACGT_tile + curr_tile_pos*N_ACGT, seq->line2[i]);
+    if (seq->line4[i] < min_quality) {
+      update_ACGT_counts(res->lowQ_ACGT_tile + curr_tile_pos*N_ACGT, seq->line2[i]);
+      lowQ++;
+    }
   }
-  if ( Ns > 0 ) res -> reads_wN++;
+  if (Ns > 0) res->reads_wN++;
   update_QPosTile_table(res, seq);
-  update_ACGT_pos(res -> ACGT_pos, seq);
-  res -> reads_MlowQ[lowQ]++;
-  res -> nreads++;
+  update_ACGT_pos(res->ACGT_pos, seq);
+  res->reads_MlowQ[lowQ]++;
+  res->nreads++;
 }
 
 /**
@@ -392,10 +468,17 @@ void update_QPosTile_table(Info *res, Fq_read *seq) {
   int quality = 0;
   // Mucha atencion con los 'indices
   while (seq -> line4[i] != '\0') {
-     quality = ((int)seq -> line4[i] - ZEROQ);
-     if ( quality >= res -> nQ ) {
-        fprintf(stderr, "Quality is too large, %d.\n", quality);
-        fprintf(stderr, "Are your data Phred+33? Redefine ZEROQ otherwise\n");
+     quality = ((int)seq -> line4[i] - res->zeroQ);
+     if ( quality >= res->nQ ) {
+        fprintf(stderr, "Quality score %d detected is too large given tge highest expected quality value (%d).\n", quality, res->nQ);
+        fprintf(stderr, "Is your data Phred+%d? Consider redefining ZEROQ, e.g. by -0 64.\n", res->zeroQ);
+        fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+        fprintf(stderr, "Exiting program\n");
+        exit(EXIT_FAILURE);
+     }
+     if ( quality < 0 ) {
+        fprintf(stderr, "Quality score %d detected is negative. ", quality);
+        fprintf(stderr, "Is your data Phred+%d? Consider redefining ZEROQ, e.g. by -0 33.\n", res->zeroQ);
         fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
         fprintf(stderr, "Exiting program\n");
         exit(EXIT_FAILURE);
@@ -432,6 +515,8 @@ void resize_info(Info* res) {
   int nQ = 0;
   uint64_t* QPosTile_table;
   if (res -> ntiles != res -> tile_pos + 1) {
+    fprintf(stderr, "  WARNING: expected %d tiles but found only %d.\n", res->ntiles, res->tile_pos + 1);
+
      res -> ntiles = res -> tile_pos + 1;
      res -> sz_lowQ_ACGT_tile =  N_ACGT*(res -> ntiles);
      res -> sz_ACGT_tile =  N_ACGT*(res -> ntiles);
@@ -458,8 +543,7 @@ void resize_info(Info* res) {
   // sort the qual_tags
   qsort(res->qual_tags, nQ, sizeof(int), cmpfunc);
   res -> sz_QPosTile_table = (res -> ntiles)*(res -> read_len)*nQ;
-  QPosTile_table = (uint64_t *) malloc((res -> sz_QPosTile_table)
-                                       * sizeof(uint64_t));
+  QPosTile_table = (uint64_t *) calloc(res -> sz_QPosTile_table, sizeof(uint64_t));
   // initialize the new array
   for (i = 0 ; i< (res -> ntiles); i++) {
      for (j = 0; j < nQ; j++) {

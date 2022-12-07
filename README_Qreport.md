@@ -1,6 +1,6 @@
 # QReport user manual
 
-Obtains statistics from the reads quality of a fastq file. 
+Obtains statistics from the read qualities of a fastq file. 
 The binary output is then read by an `Rmd` script that generates a 
 html visualization of the data. 
 
@@ -10,9 +10,10 @@ html visualization of the data.
 Usage `C` executable (in folder `bin`): 
 
 ```
-Usage: ./Qreport -i <INPUT_FILE.fq> -l <READ_LENGTH>
-       -o <OUTPUT_FILE> -t [NUMBER_OF_TILES] -q [MINQ]
-       -n [#_QUALITY_VALUES] -f [FILTER_STATUS]
+Usage: Qreport -i <INPUT_FILE.fq> -l <READ_LENGTH>
+       -o <OUTPUT_FILE> [-t <NUMBER_OF_TILES>] [-q <MINQ>]
+        [-n <#_QUALITY_VALUES>] [-f <FILTER_STATUS>]
+	[-0 <ZEROQ>] [-Q <quality-values>]
 Reads in a fq file (gz, bz2, z formats also accepted) and creates a
 quality report (html file) along with the necessary data to create it
 stored in binary format.
@@ -22,11 +23,15 @@ Options:
  -i Input file [*fq|*fq.gz|*fq.bz2]. Mandatory option.
  -l Read length. Length of the reads. Mandatory option.
  -o Output file prefix (with NO extension). Mandatory option.
- -t Number of tiles. Optional (default 96).
+ -t Number of tiles. Can be obtained from Illumina's `Run Summary` (see https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Vault/Informatics/Sequencing_Analysis/BS/swSEQ_mBS_ViewRunSamplesList.htm). It is usually 96 for flow cells used on HiSeq and NextSeq machines, and 19 for flow cells for the MiSeq with v3 chemistry. Multiply by the number of lanes, if data comes from more than one lane. Optional (default 96).
  -q Minimum quality allowed. Optional (default 27).
  -n Number of different quality values allowed. Optional (default 46).
  -f Filter status: 0 original file, 1 file filtered with trimFilter,
     2 file filtered with another tool. Optional (default 0).
+ -0 ASCII value for quality score 0. Optional (default 33).
+ -Q quality values for low quality proportion plots. Optional (default 27,33,37),
+    Format is either <int>[,<int>]* or <min-int>:<max-int>.
+    
 ```
 
 
@@ -69,7 +74,7 @@ Options:
    * Plot 7: Nucleotide content per position
 
 **NOTE** If the data were sequenced on more than one lane, in Plots 3, 4 and 5 
-there will be a heatmap pro lane.
+there will be one heatmap per lane.
 
 ## Example 
 
@@ -80,11 +85,13 @@ example, type,
     $ cd example/Qreport_Sreport
     $ mkdir run_test
     $ cd run_test
-    $ ../../../bin/QReport -i ../test.fq.bz2 -l 51 -o my_test_output
+    $ QReport -i ../test.fq.bz2 -l 51 -o my_test_output
 ```
  and compare it with the provided run example, as specified in the README
- file under `./example/QReport_Sreport`
+ file under `./example/QReport_Sreport`.
 
+**NOTE** If you do not know the number of tiles for your dataset and the default 
+of 96 is too low, set -t to a large number, e.g. 1000.
   
 ## Contributors
 

@@ -29,24 +29,96 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
+#include <libgen.h>
+#include <unistd.h>
+#include <string.h>
+#include <limits.h>
 #include "Rcommand_Qreport.h"
 #include "init_Qreport.h"
+#include "copy_file.h"
 #include "defines.h"
 #include "config.h"
+
+#ifdef __APPLE__
+  #include <mach-o/dyld.h>
+#endif
 
 extern Iparam_Qreport par_QR; /**< input parameters Qreport*/
 
 /**
  * @brief returns Rscript command that generates the quality report in html
  * */
-char *command_Qreport() {
+char *command_Qreport(char ** new_dir_ptr) {
   char *command = calloc(MAX_RCOMMAND,sizeof(char));
   char cwd[1024];
   if (getcwd(cwd, sizeof(cwd)) != NULL)
-      fprintf(stdout, "Current working dir: %s\n", cwd);
+      fprintf(stderr, "- Current working dir: %s\n", cwd);
   else
       perror("getcwd() error");
 #ifdef HAVE_RPKG
+  // find the calling program to deduce where to find Rmd-files
+  char szTmp[MAX_FILENAME];
+  char pBuf[MAX_FILENAME];
+  size_t len = sizeof(pBuf);
+#ifdef __APPLE__
+  uint32_t bufsize = sizeof(pBuf);
+  _NSGetExecutablePath(pBuf, &bufsize);
+#else
+  sprintf(szTmp, "/proc/%d/exe", getpid());
+  int bytes = readlink(szTmp, pBuf, len);
+  if ((size_t)bytes > len-1) bytes = len-1;
+  if(bytes == 0) {
+    fprintf(stderr, "Unexpected error when searching for call directoy!\n");
+    exit(1);
+  }
+#endif
+  char *old_dir = dirname(pBuf);
+  if (strcmp(old_dir, INSTALL_DIR) != 0) {
+    old_dir = dirname(old_dir);
+    strcat(old_dir, "/R");
+  } else {
+    strcpy(pBuf, RMD_QUALITY_REPORT);
+    old_dir = dirname(pBuf);
+  }
+//  fprintf(stderr, ">>>old_dir: %s, INSTALL_DIR: %s,\n   RSCRIPT_EXEC: %s, CMAKE_INSTALL_PREFIX: %s\n", old_dir, INSTALL_DIR, RSCRIPT_EXEC, CMAKE_INSTALL_PREFIX);
+  
+  char template[] = "/tmp/FastqPuri_XXXXXX";
+//  fprintf(stderr, ">>>template: %s\n", template);
+  char *new_dir = mkdtemp(template);
+
+  if (*new_dir == NULL)
+  {
+    fprintf(stderr, "Unexpected error when trying to create the temporary dir %s, errno: %s\n", 
+            template, strerror(errno));
+    exit(1);
+  }
+//  fprintf(stderr, ">>>template after mkdtemp: %s\n", template);
+  *new_dir_ptr = new_dir;
+//  fprintf(stderr, ">>>new_dir: %s\n", new_dir);
+    
+  char rmd_quality_report_name_tmp[] = RMD_QUALITY_REPORT;
+  char *rmd_quality_report_name = basename(rmd_quality_report_name_tmp);
+  
+  char style_fname_old[MAX_FILENAME], utils_fname_old[MAX_FILENAME];
+  char style_fname_new[MAX_FILENAME], utils_fname_new[MAX_FILENAME];
+  char rmd_quality_report_old[MAX_FILENAME]; char rmd_quality_report_new[MAX_FILENAME];
+  
+  snprintf(rmd_quality_report_old, MAX_FILENAME, "%s/%s", old_dir, rmd_quality_report_name);  
+  snprintf(rmd_quality_report_new, MAX_FILENAME, "%s/%s", new_dir, rmd_quality_report_name);  
+//  fprintf(stderr, ">>>rmd_quality_report: %s -> %s\n", rmd_quality_report_old, rmd_quality_report_new);
+  snprintf(style_fname_old, MAX_FILENAME, "%s/style.css", old_dir);  
+  snprintf(style_fname_new, MAX_FILENAME, "%s/style.css", new_dir);  
+//  fprintf(stderr, ">>>style_fname: %s -> %s\n", style_fname_old, style_fname_new);
+  snprintf(utils_fname_old, MAX_FILENAME, "%s/utils.R", old_dir);  
+  snprintf(utils_fname_new, MAX_FILENAME, "%s/utils.R", new_dir);  
+//  fprintf(stderr, ">>>utils_fname: %s\n", utils_fname_old, utils_fname_new);
+  fprintf(stderr, "- Rmd-file used to generate HTML: %s\n", rmd_quality_report_old);
+
+  copy_file(rmd_quality_report_old, rmd_quality_report_new);
+  copy_file(utils_fname_old, utils_fname_new);
+  copy_file(style_fname_old, style_fname_new);
+
   snprintf(command, MAX_RCOMMAND,"%s -e \" inputfile = normalizePath('%s', \
  mustWork = TRUE) ; output = '%s';\
 output_file = gsub('.*/', '', output);\
@@ -58,7 +130,7 @@ output_file = paste0('%s', '/', output_file); };\
 rmarkdown::render('%s', params = list(inputfile = inputfile, filter=%d, \
  version = '%s'), output_file = output_file)\"", RSCRIPT_EXEC,
        par_QR.outputfilebin, par_QR.outputfilehtml, cwd,
-       RMD_QUALITY_REPORT, par_QR.filter, VERSION);
+       rmd_quality_report_new, par_QR.filter, VERSION);
 #endif
   return command;
 }

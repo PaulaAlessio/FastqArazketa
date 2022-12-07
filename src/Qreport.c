@@ -62,26 +62,25 @@ int main(int argc, char *argv[]) {
   timeinfo = localtime(&rawtime);
 
   // Get arguments
+  fprintf(stderr, "Qreport from FastqPuri\n");
   getarg_Qreport(argc, argv);
-  fprintf(stderr, "Starting program at: %s", asctime(timeinfo));
   fprintf(stderr, "- Input file: %s\n", par_QR.inputfile);
   fprintf(stderr, "- Read length: %d\n", par_QR.read_len);
   fprintf(stderr, "- Number of tiles: %d\n", par_QR.ntiles);
   fprintf(stderr, "- Min quality: %d\n", par_QR.minQ);
-  fprintf(stderr, "- Output bin file : %s\n", par_QR.outputfilebin);
-  fprintf(stderr, "- Output html file : %s\n", par_QR.outputfilehtml);
-  fprintf(stderr, "- Output info file: %s\n", par_QR.outputfileinfo);
-  fprintf(stderr, "- Reading a filtered file? %s.\n",
-                     par_QR.filter?"yes":"no");
-  if (par_QR.filter)
-     fprintf(stderr, "- Data filtered with trimFilter? %s.\n",
-                       (par_QR.filter-1)?"yes":"no");
+  fprintf(stderr, "- Qualities for properties plot: %s\n", par_QR.lowQprops);
+  fprintf(stderr, "- Output bin-file : %s\n", par_QR.outputfilebin);
+  fprintf(stderr, "- Output html-file : %s\n", par_QR.outputfilehtml);
+  fprintf(stderr, "- Output info-file: %s\n", par_QR.outputfileinfo);
+  fprintf(stderr, "Starting Qreport at: %s", asctime(timeinfo));
 
   // Opening file
+  fprintf(stderr, "- Reading a filtered file? %s.\n", par_QR.filter?"yes":"no");
+  if (par_QR.filter)
+     fprintf(stderr, "- Data filtered with trimFilter? %s.\n", (par_QR.filter-1)?"no":"yes");
   f = fopen_gen(par_QR.inputfile, "r");
   if (f == NULL) {
-     fprintf(stderr, "File %s not found. Exiting program.\n",
-           par_QR.inputfile);
+     fprintf(stderr, "File %s not found. Exiting program.\n", par_QR.inputfile);
      fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
      exit(EXIT_FAILURE);
   }
@@ -90,28 +89,25 @@ int main(int argc, char *argv[]) {
   init_info(res);
 
   // Read the fastq file
-  while ( (newlen = fread(buffer+offset, 1, B_LEN-offset, f) ) > 0 ) {
-     newlen += offset;
-     buffer[newlen++] =  '\0';
-     for (j = 0 ; buffer[j] != '\0' ; j++) {
-        if (buffer[j] == '\n') {
-          c2 = j;
-          par_QR.one_read_len &= get_fqread(seq, buffer, c1, c2, nlines,
-                                   par_QR.read_len, par_QR.filter);
-          if ( (nlines % 4) == 3 ) {
-             // printf("Nreads: %d \n",res -> nreads);
-             if (res -> nreads == 0) get_first_tile(res, seq);
-             update_info(res, seq);
-             if (res -> nreads % 1000000 == 0)
-              fprintf(stderr, "  %10d reads have been read.\n", res -> nreads);
-          }
-          c1 = c2 + 1;
-          nlines++;
+  while ( (newlen = fread(buffer+offset, 1, B_LEN-offset, f) ) > 0) {
+    newlen += offset;
+    buffer[newlen++] =  '\0';
+    for (j = 0 ; buffer[j] != '\0' ; j++) {
+      if (buffer[j] == '\n') {
+        c2 = j;
+        par_QR.one_read_len &= get_fqread(seq, buffer, c1, c2, nlines,  par_QR.read_len, par_QR.filter);
+        if ( (nlines % 4) == 3 ) {
+          if (res -> nreads == 0) get_first_tile(res, seq);
+          update_info(res, seq);
+          if (res -> nreads % 1000000 == 0)
+            fprintf(stderr, "  %10d reads have been read.\n", res -> nreads);
         }
+        c1 = c2 + 1;
+        nlines++;
+      }
     }
     offset = newlen - c1 -1;
-    if (offset >  -1)
-      memcpy(buffer, buffer+c1, offset);
+    if (offset >  -1) memcpy(buffer, buffer+c1, offset);
     c2 = -1;
     c1 = 0;
   }  // end while
@@ -134,7 +130,6 @@ int main(int argc, char *argv[]) {
   // Free memory
   free_info(res);
 
-
   // Read struct from disk (binary)
   //   res  = malloc(sizeof *res);
   //   fprintf(stderr, "- Read data structure from file %s.\n",outputfile);
@@ -143,10 +138,11 @@ int main(int argc, char *argv[]) {
   //   print_info(res);
   //
 
-  fprintf(stderr, "Creating html output in file: %s\n", par_QR.outputfilehtml);
 #ifdef HAVE_RPKG
-  char * command = command_Qreport();
-  fprintf(stderr, "Running command: %s \n", command);
+  fprintf(stderr, "- Creating html output in file: %s\n", par_QR.outputfilehtml);
+  char *new_dir;
+  char *command = command_Qreport(&new_dir);
+  fprintf(stderr, "- Running command: %s \n", command);
   int status;
   if ((status = system(command)) != 0) {
       fprintf(stderr, "Something went wrong when executing R script.\n");
@@ -154,10 +150,22 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "Exiting program.\n");
       exit(EXIT_FAILURE);
   }
+  free(command);
+
+  // Removing tmp directory
+  char rm_cmd[MAX_FILENAME];
+  snprintf(rm_cmd, MAX_FILENAME, "rm -fr %s", new_dir);
+  if ((status = system(rm_cmd)) != 0) {
+      fprintf(stderr, "Something went wrong when trying to delete temporary folder %s.\n", new_dir);
+      fprintf(stderr, "Exiting program.\n");
+      exit(EXIT_FAILURE);
+  }
+
 #else
   fprintf(stderr, "WARNING: html reports are NOT being generated.\n");
   fprintf(stderr, "         Dependencies not fulfilled.\n");
 #endif
+
   free(buffer);
   // Obtaining elapsed time
   end = clock();

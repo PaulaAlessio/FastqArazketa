@@ -62,6 +62,30 @@ static int no_N(Fq_read *seq) {
 }
 
 /**
+*
+* @brief checks if a sequence contains non standard base callings greater than the threshold (N's)
+* @returns 0 if percentage less than threshold, 1 if more.
+*
+* This function checks if any of the base callings in a
+* given fastq read is different from A, C, G, T. Basically,
+* any char different from the former ones is classified as N.
+* */
+static int Nuncertain(Fq_read *seq, int threshold) {
+  int i;
+  char Lmer[seq -> L];
+  memcpy(Lmer, seq -> line2, seq -> L);
+  Lmer_sLmer(Lmer, seq -> L);
+  float ncount=0;
+  for (i = 0; i < seq -> L; i++) {
+    if (Lmer[i] >= Nencode) {
+      ncount++;
+    }
+  }
+  ncount=ncount*100/(float)seq -> L;
+  return (ncount<=threshold);
+}
+
+/**
  * @brief Finds the largest Nfree sub-seq and keeps it if larger than minL
  * @param seq fastq read
  * @param minL minimum accepted trimmed length
@@ -195,10 +219,10 @@ static int Ntrim_ends(Fq_read *seq, int minL) {
  * @return 0 if seq contains lowQ nucleotides, 1 otherwise
  *
  * */
-static int no_lowQ(Fq_read *seq, int minQ) {
+static int no_lowQ(Fq_read *seq, int minQ, int zeroQ) {
   int i;
   for (i = 0; i < seq -> L; i++) {
-    if (seq->line4[i] < (ZEROQ + minQ))
+    if (seq->line4[i] < (zeroQ + minQ))
         return 0;
   }
   return 1;
@@ -212,14 +236,14 @@ static int no_lowQ(Fq_read *seq, int minQ) {
  * @return 0 if not used, 1 if accepted as is, 2 if accepted and trimmed
  *
  * */
-static int Qtrim_ends(Fq_read *seq, int minQ, int minL) {
+static int Qtrim_ends(Fq_read *seq, int minQ, int zeroQ, int minL) {
   // Beginning of sequence:
   int L = (seq->L)-1;
   int t_start = 0;
   int t_end = L;
-  while (seq->line4[t_start] < (ZEROQ + minQ))
+  while (seq->line4[t_start] < (zeroQ + minQ))
      t_start++;
-  while (seq->line4[t_end] < (ZEROQ + minQ))
+  while (seq->line4[t_end] < (zeroQ + minQ))
      t_end--;
   // Accept sequence as is
   if ((t_end - t_start) == L) {
@@ -267,10 +291,10 @@ static int Qtrim_ends(Fq_read *seq, int minQ, int minL) {
  * @param nlowQ threshold on lowQ nucleotides (>= NOT allowed)
  * @return 0 if not used, 1 if accepted as is
  * */
-static int Qtrim_frac(Fq_read *seq, int minQ, int nlowQ) {
+static int Qtrim_frac(Fq_read *seq, int minQ, int zeroQ, int nlowQ) {
   int ilowQ = 0, i = 0;
   while (i < (seq->L) &&  ilowQ < nlowQ) {
-     if (seq->line4[i] < (ZEROQ + minQ)) ilowQ++;
+     if (seq->line4[i] < (zeroQ + minQ)) ilowQ++;
      i++;
   }
   return (ilowQ == nlowQ) ? 0: 1;
@@ -289,19 +313,19 @@ static int Qtrim_frac(Fq_read *seq, int minQ, int nlowQ) {
  * there are less than nlowQ.
  *
  * */
-static int Qtrim_endsfrac(Fq_read *seq, int minQ, int minL, int nlowQ ) {
+static int Qtrim_endsfrac(Fq_read *seq, int minQ, int zeroQ, int minL, int nlowQ ) {
   int L = (seq->L)-1;  // last accessible element of the sequence
   int t_start = 0;
   int t_end = L;
   int ilowQ = 0;
   int i;
-  while (seq->line4[t_start] < (ZEROQ + minQ))
+  while (seq->line4[t_start] < (zeroQ + minQ))
     t_start++;
-  while (seq->line4[t_end] < (ZEROQ + minQ))
+  while (seq->line4[t_end] < (zeroQ + minQ))
     t_end--;
   i = t_start;
   while (i < t_end && ilowQ < nlowQ) {
-    if (seq->line4[i] < (ZEROQ + minQ)) ilowQ++;
+    if (seq->line4[i] < (zeroQ + minQ)) ilowQ++;
     i++;
   }
   // Discard sequence
@@ -430,14 +454,14 @@ static int align_uint32(Fq_read *seq, Ad_seq *ptr_adap, bool all) {
     cmp32 = (adsh ^ read32);
     n = __builtin_popcount(cmp32 >> 4);
     if (n <= 2*mismatches) {
-      score = obtain_score(seq, pos, ptr_adap, 0);
+      score = obtain_score(seq, pos, ptr_adap, 0, par_TF.zeroQ);
       if (score > threshold) break;
     }
     pos--;
     cmp32 = (ad ^ read32);
     n = __builtin_popcount(cmp32);
     if (n <= 2*mismatches) {
-      score =  obtain_score(seq, pos, ptr_adap, 0);
+      score =  obtain_score(seq, pos, ptr_adap, 0, par_TF.zeroQ);
       if (score > threshold) break;
     }
     pos--;
@@ -461,14 +485,14 @@ static int align_uint32(Fq_read *seq, Ad_seq *ptr_adap, bool all) {
     cmp32 = (ad ^ read32);
     n = __builtin_popcount(cmp32);
     if (n <= 2*mismatches) {
-       score = obtain_score(seq, 0, ptr_adap, pos);
+       score = obtain_score(seq, 0, ptr_adap, pos, par_TF.zeroQ);
        if (score > threshold) break;
     }
     pos--;
     cmp32 = (adsh ^ read32);
     n = __builtin_popcount(cmp32>>2);
     if (n <= 2*mismatches) {
-       score = obtain_score(seq, 0, ptr_adap, pos);
+       score = obtain_score(seq, 0, ptr_adap, pos, par_TF.zeroQ);
        if (score > threshold) break;
     }
     pos--;
@@ -568,14 +592,14 @@ static int align_uint64(Fq_read *seq, Ad_seq *ptr_adap) {
     cmp64 = (adsh ^ read64);
     n = __builtin_popcountl(cmp64 >> 4);
     if (n <= 2*mismatches) {
-      score = obtain_score(seq, pos, ptr_adap, 0);
+      score = obtain_score(seq, pos, ptr_adap, 0, par_TF.zeroQ);
       if (score > threshold) break;
     }
     pos--;
     cmp64 = (ad ^ read64);
     n = __builtin_popcountl(cmp64);
     if (n <= 2*mismatches) {
-      score =  obtain_score(seq, pos, ptr_adap, 0);
+      score =  obtain_score(seq, pos, ptr_adap, 0, par_TF.zeroQ);
       if (score > threshold) break;
     }
     pos--;
@@ -593,14 +617,14 @@ static int align_uint64(Fq_read *seq, Ad_seq *ptr_adap) {
     cmp64 = (ad ^ read64);
     n = __builtin_popcount(cmp64);
     if (n <= 2*mismatches) {
-       score = obtain_score(seq, 0, ptr_adap, pos);
+       score = obtain_score(seq, 0, ptr_adap, pos, par_TF.zeroQ);
        if (score > threshold) break;
     }
     pos--;
     cmp64 = (adsh ^ read64);
     n = __builtin_popcount(cmp64 >> 4);
     if (n <= 2*mismatches) {
-       score = obtain_score(seq, 0, ptr_adap, pos);
+       score = obtain_score(seq, 0, ptr_adap, pos, par_TF.zeroQ);
        if (score > threshold) break;
     }
     pos--;
@@ -661,12 +685,15 @@ int trim_adapter(Fq_read *seq, Ad_seq *adap_list) {
  * - STRIP(3): finds the longest N-free subsequence and trims it if
  *             it is at least minL nucleotides long (2 if trimming, 1 if
  *             no N's are found), rejects it otherwise (0).
+ *  - FRAC(4):   removes the reads if the uncertainty is above a threshold\
+                 (-u), default to 10 percent
  * */
 int trim_sequenceN(Fq_read *seq ) {
   return (par_TF.trimN == NO)? 1:
           (par_TF.trimN == ALL)? no_N(seq):
           (par_TF.trimN == ENDS)? Ntrim_ends(seq, par_TF.minL):
-          (par_TF.trimN == STRIP)? Nfree_Lmer(seq, par_TF.minL): -1;
+          (par_TF.trimN == STRIP)? Nfree_Lmer(seq, par_TF.minL):
+          (par_TF.trimN == FRAC)? Nuncertain(seq, par_TF.uncertain): -1;
 }
 
 /**
@@ -691,11 +718,11 @@ int trim_sequenceN(Fq_read *seq ) {
  * */
 int trim_sequenceQ(Fq_read *seq) {
   return (par_TF.trimQ == NO)? 1 :
-         (par_TF.trimQ == ALL)? no_lowQ(seq, par_TF.minQ):
-         (par_TF.trimQ == ENDS) ? Qtrim_ends(seq, par_TF.minQ, par_TF.minL):
-         (par_TF.trimQ == FRAC) ? Qtrim_frac(seq, par_TF.minQ, par_TF.nlowQ):
+         (par_TF.trimQ == ALL)? no_lowQ(seq, par_TF.minQ, par_TF.zeroQ):
+         (par_TF.trimQ == ENDS) ? Qtrim_ends(seq, par_TF.minQ, par_TF.zeroQ, par_TF.minL):
+         (par_TF.trimQ == FRAC) ? Qtrim_frac(seq, par_TF.minQ, par_TF.zeroQ, par_TF.nlowQ):
          (par_TF.trimQ == ENDSFRAC) ?
-                Qtrim_endsfrac(seq, par_TF.minQ, par_TF.minL, par_TF.nlowQ):
+                Qtrim_endsfrac(seq, par_TF.minQ, par_TF.zeroQ, par_TF.minL, par_TF.nlowQ):
          (par_TF.trimQ == GLOBAL) ?
                 Qtrim_global(seq, par_TF.globleft, par_TF.globright, 'Q'): -1;
 }

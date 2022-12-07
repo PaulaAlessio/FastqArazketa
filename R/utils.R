@@ -6,7 +6,9 @@ getQualStats <- function(path){
    res$read_len <- readBin(to.read, integer())
    res$ntiles <- readBin(to.read, integer())
    res$minQ <- readBin(to.read, integer())
+   res$nLowQprops <- readBin(to.read, integer())
    res$nQ <- readBin(to.read, integer())
+   res$zeroQ <- readBin(to.read, integer())
    res$nreads <- readBin(to.read, integer())
    res$reads_wN <- readBin(to.read, integer())
   
@@ -17,6 +19,7 @@ getQualStats <- function(path){
    res$sz_ACGT_pos <- readBin(to.read, integer())
     
    res$base_tags <- c("A","C","G","T","N")
+   res$lowQprops <- readBin(to.read, integer(), n=res$nLowQprops)
    res$tile_tags <- readBin(to.read, integer(), n=res$ntiles)
    res$lane_tags <- readBin(to.read, integer(), n=res$ntiles)
    res$qual_tags <- readBin(to.read, integer(), n=res$nQ)
@@ -84,7 +87,7 @@ mimic <- function(Q){
     colnames(whiskers) <- c("Q10","Q90")
     for( i in 1:L){
         means[i] <- weighted.mean(qualities,Q[i,])
-        Q_boxes[,i] <- sample(qualities,N ,replace = T, prob = Q[i,]/sum(Q[i,]))
+        Q_boxes[,i] <- sample(qualities, N, replace=TRUE, prob=Q[i,]/sum(Q[i,]))
         sorted <- sort(Q_boxes[,i])
         whiskers[i,] <- sorted[c(round(N*0.1,0), round(N*0.9,0))]
     }
@@ -105,7 +108,7 @@ simulateQ <- function(){
 }
 
 my_boxplot <- function(data,...){
-    a <-boxplot(data$Q_boxes,col="grey", outline=F, range=1,...)
+    a <- boxplot(data$Q_boxes, col="grey", outline=FALSE, range=1,...)
     points(data$means,type="l", col="blue")
     d <- 0.2
     for (i in 1:nrow(data$whiskers)){
@@ -118,8 +121,7 @@ my_boxplot <- function(data,...){
 
 my_plot <- function(data){
     L <- ncol(data$Q_boxes)
-    my_boxplot(data,ylim=c(0,42),xlab="Position in read",
-      ylab="Quality",xaxt="n",yaxt="n")
+    my_boxplot(data, ylim=c(0,42),xlab="Position in read", ylab="Quality", xaxt="n", yaxt="n")
     axis(1,1:L,1:L,cex.axis=0.6)
     axis(2,data$qualities,data$qualities, cex.axis=0.6)
 
@@ -130,7 +132,7 @@ my_plot <- function(data){
 getFilterStats <- function(path) {
   to.read = file(path, "rb")
   if (file.info(path)$size != 56) {
-    stop("File size is not 56 Bytes as expected. Exiting.")
+      stop("In file ", path, " size is ", file.info(path)$size, " instead of 56 bytes as expected. Exiting.")
   }
   NFILTER <- 4
   res <- list()
@@ -154,7 +156,7 @@ getFilterStats <- function(path) {
 getFilterStatsDS <- function(path) {
   to.read = file(path, "rb")
   if (file.info(path)$size != 72) {
-    stop("File size is not 72 Bytes as expected. Exiting.")
+    stop("In file ", path, " size is ", file.info(path)$size, " instead of 72 bytes as expected. Exiting.")
   }
   NFILTER <- 4
   res <- list()
@@ -186,7 +188,9 @@ getFilterTables <- function(inputfolder) {
    trimQ <- c("NONE", "ALL", "ENDS", "FRAC", "ENDSFRAC", "GLOBAL")
    trimN <- c("NONE", "ALL", "ENDS", "STRIPS")
    applied <- c("NO", "YES", "YES", "YES", "YES", "YES")
-   files <- list.files(inputfolder,pattern="bin$")
+   files <- list.files(inputfolder,pattern=".bin$")
+   fsizes <- sapply(files, function(f) file.info(paste0(inputfolder,"/", f))$size)
+   files <- files[fsizes == 56]
    nombres <- gsub('_summary\\.bin$', '', files)
    Ns <- length(files)
    table <- matrix(nrow = Ns, ncol = 9,
@@ -231,7 +235,9 @@ getFilterTablesDS <- function(inputfolder) {
    trimQ <- c("NONE", "ALL", "ENDS", "FRAC", "ENDSFRAC", "GLOBAL")
    trimN <- c("NONE", "ALL", "ENDS", "STRIPS")
    applied <- c("NO", "YES", "YES", "YES", "YES", "YES")
-   files <- list.files(inputfolder,pattern="bin$")
+   files <- list.files(inputfolder,pattern="_summary\\.bin$")
+   fsizes <- sapply(files, function(f) file.info(paste0(inputfolder, "/", f))$size)
+   files <- files[fsizes == 72]
    nombres <- gsub('_summary\\.bin$', '', files)
    Ns <- length(files)
    table <- matrix(nrow = Ns, ncol = 11,

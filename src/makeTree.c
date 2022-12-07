@@ -1,20 +1,20 @@
 /****************************************************************************
  * copyright (c) 2017 by paula perez rubio                                  *
  *                                                                          *
- * this file is part of fastqarazketa.                                      *
+ * this file is part of FastqPuri.                                      *
  *                                                                          *
- *   fastqarazketa is free software: you can redistribute it and/or modify  *
+ *   FastqPuri is free software: you can redistribute it and/or modify  *
  *   it under the terms of the gnu general public license as                *
  *   published by the free software foundation, either version 3 of the     *
  *   license, or (at your option) any later version.                        *
  *                                                                          *
- *   fastqarazketa is distributed in the hope that it will be useful,       *
+ *   FastqPuri is distributed in the hope that it will be useful,       *
  *   but without any warranty; without even the implied warranty of         *
  *   merchantability or fitness for a particular purpose.  see the          *
  *   gnu general public license for more details.                           *
  *                                                                          *
  *   you should have received a copy of the gnu general public license      *
- *   along with fastqarazketa.                                              *
+ *   along with FastqPuri.                                              *
  *   if not, see <http://www.gnu.org/licenses/>.                            *
  ****************************************************************************/
 
@@ -57,8 +57,9 @@ int main(int argc, char *argv[]) {
   timeinfo = localtime(&rawtime);
 
   // Get arguments
+  fprintf(stderr, "makeTree from FastqPuri\n");
   getarg_makeTree(argc, argv);
-  fprintf(stderr, "Starting program at: %s", asctime(timeinfo));
+  fprintf(stderr, "Starting makeTree at: %s", asctime(timeinfo));
   fprintf(stderr, "makeTree exec: constructing a tree and storing it\n.");
   fprintf(stderr, "- Input file: %s\n", par_MT.inputfasta);
   fprintf(stderr, "- Tree depth: %d\n", par_MT.L);

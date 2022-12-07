@@ -52,6 +52,7 @@ Iparam_trimFilter par_TF;  /**< global variable: Input parameters trimFilter.*/
  * */
 int main(int argc, char *argv[]) {
   // Read in command line arguments
+  fprintf(stderr, "trimFilter from FastqPuri\n");
   getarg_trimFilter(argc, argv);
 
   // Output filenames
@@ -107,7 +108,7 @@ int main(int argc, char *argv[]) {
   start = clock();
   time(&rawtime);
   timeinfo = localtime(&rawtime);
-  fprintf(stderr , "Starting program at: %s", asctime(timeinfo));
+  fprintf(stderr , "Starting trimFilter at: %s", asctime(timeinfo));
 
   // BODY of the function here!
   // Initializing stat_TF.
@@ -130,7 +131,7 @@ int main(int argc, char *argv[]) {
     par_TF.ad.Nad = ptr_fa_ad -> nentries;
     free_fasta(ptr_fa_ad);
     // Alocate memory for the packed sequence
-    fprintf(stderr, "Adapters removal is activated!\n");
+    fprintf(stderr, "- Adapters removal is activated!\n");
   }  // endif par_TF.is adapter
   // Loading the index file to look for contaminations
   Tree *ptr_tree = NULL;
@@ -202,6 +203,7 @@ int main(int argc, char *argv[]) {
            offset = newlen - j+1;
            get_fqread(seq, buffer, c1, c2, nlines, par_TF.L, 0);
            if ((nlines % 4) == 3) {
+	      check_zeroQ(seq, par_TF.zeroQ, stat_TF.nreads);
               stat_TF.nreads++;
               bool discarded = false;
               int trim;
@@ -308,7 +310,7 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "- Trimmed due to N's: %d\n", stat_TF.trimmed[NNNN]);
   }
   // Write summary info file
-  fprintf(stderr, "Writing summary data to %s\n", summary);
+  fprintf(stderr, "- Writing summary data to %s\n", summary);
   write_summary_TF(stat_TF, summary);
 
   free(seq);

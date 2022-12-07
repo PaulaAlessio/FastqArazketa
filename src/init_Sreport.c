@@ -30,9 +30,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <libgen.h>
+#include <limits.h>
 #include "str_manip.h"
 #include "init_Sreport.h"
 #include "config.h"
+
+#ifdef __APPLE__
+    #include <mach-o/dyld.h>
+#endif
 
 extern Iparam_Sreport par_SR;
 
@@ -41,16 +48,17 @@ extern Iparam_Sreport par_SR;
 */
 void printHelpDialog_Sreport() {
   const char dialog[] =
-    "Usage: ./Sreport -i <INPUT_FOLDER> -t <Q|T|D> -o <OUTPUT_FILE> \n"
-    "Uses all *bin files found in a folder (output of Qreport|trimFilter)\n"
-    "and generates a summary report in html format (of Qreport|trimFilter).\n"
+    "Usage: ./Sreport -i <INPUT_FOLDER> -t <Q|F|P> -o <OUTPUT_FILE> \n"
+    "Uses all *bin files found in a folder (output of Qreport|trimFilter|trimFilterPE)\n"
+    "and generates a summary report in html format (of Qreport|trimFilter|trimFilterPE).\n"
     "Options:\n"
      " -v Prints package version.\n"
      " -h Prints help dialog.\n"
      " -i Input folder containing *bin data (output from Qreport)."
      " Mandatory option.\n"
-     " -t {Q,F,D} Type of report to be generated: 'Q' for quality summary \n"
-     "    report, 'F' for filter summary report, and 'D' for double stranded\n"
+     " -t {Q,F,P} Type of report to be generated: 'Q' for quality summary\n"
+     "     report, 'F' for filter summary report (single-end reads), and \n"
+     "     'P' for filter summary report (paired-end reads)\n"
      "    data filter summary report. Mandatory option,\n"
      " -o Output file (with NO extension). Mandatory option.\n\n";
   fprintf(stderr, "%s", dialog);
@@ -98,7 +106,7 @@ void getarg_Sreport(int argc, char **argv) {
           par_SR.Rmd_file = RMD_SUMMARY_REPORT;
         } else if (!strncmp(optarg, "F", 1)) {
           par_SR.Rmd_file = RMD_SUMMARY_FILTER_REPORT;
-        } else if (!strncmp(optarg, "D", 1)) {
+        } else if (!strncmp(optarg, "P", 1)) {
           par_SR.Rmd_file = RMD_SUMMARY_FILTER_REPORTDS;
         }
         break;
@@ -127,6 +135,29 @@ void getarg_Sreport(int argc, char **argv) {
      fprintf(stderr, "Exiting program.\n");
      fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
      exit(EXIT_FAILURE);
+  } else {
+#ifdef __APPLE__
+    uint32_t bufsize = sizeof(par_SR.pBuf);
+    _NSGetExecutablePath(par_SR.pBuf, &bufsize);
+#else
+    // find the calling program
+    char szTmp[MAX_FILENAME];
+    size_t len = sizeof(par_SR.pBuf);
+    sprintf(szTmp, "/proc/%d/exe", getpid());
+    int bytes = readlink(szTmp, par_SR.pBuf, len);
+    if ((size_t)bytes > len-1) bytes = len-1;
+    if(bytes == 0) {
+      fprintf(stderr, "Unexpected error when searching for call directoy!\n");
+      exit(1);
+    }
+#endif
+    strcpy(par_SR.pBuf, dirname(par_SR.pBuf)); // remove Sreport
+    if (strcmp(par_SR.pBuf, INSTALL_DIR) != 0) {
+      strcpy(par_SR.pBuf, dirname(par_SR.pBuf)); // remove bin
+      strcat(par_SR.pBuf, "/R/");
+      strcat(par_SR.pBuf, basename(par_SR.Rmd_file));
+      par_SR.Rmd_file = par_SR.pBuf;
+    }
   }
   if (!strncmp(par_SR.outputfile, "", 1)) {
      printHelpDialog_Sreport();
@@ -136,4 +167,3 @@ void getarg_Sreport(int argc, char **argv) {
      exit(EXIT_FAILURE);
   }
 }
-

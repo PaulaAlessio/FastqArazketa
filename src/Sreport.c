@@ -1,20 +1,20 @@
 /****************************************************************************
  * copyright (c) 2017 by paula perez rubio                                  *
  *                                                                          *
- * this file is part of fastqarazketa.                                      *
+ * this file is part of FastqPuri.                                      *
  *                                                                          *
- *   fastqarazketa is free software: you can redistribute it and/or modify  *
+ *   FastqPuri is free software: you can redistribute it and/or modify  *
  *   it under the terms of the gnu general public license as                *
  *   published by the free software foundation, either version 3 of the     *
  *   license, or (at your option) any later version.                        *
  *                                                                          *
- *   fastqarazketa is distributed in the hope that it will be useful,       *
+ *   FastqPuri is distributed in the hope that it will be useful,       *
  *   but without any warranty; without even the implied warranty of         *
  *   merchantability or fitness for a particular purpose.  see the          *
  *   gnu general public license for more details.                           *
  *                                                                          *
  *   you should have received a copy of the gnu general public license      *
- *   along with fastqarazketa.                                              *
+ *   along with FastqPuri.                                              *
  *   if not, see <http://www.gnu.org/licenses/>.                            *
  ****************************************************************************/
 
@@ -53,25 +53,40 @@ int main(int argc, char *argv[]) {
   timeinfo = localtime(&rawtime);
 
   // Get arguments
+  fprintf(stderr, "Sreport from FastqPuri\n");
   getarg_Sreport(argc, argv);
-  fprintf(stderr, "Starting program at: %s", asctime(timeinfo));
   fprintf(stderr, "- Input folder: %s\n", par_SR.inputfolder);
+  fprintf(stderr, "- Rmd-file used to generate HTML: %s\n", par_SR.Rmd_file);
   fprintf(stderr, "- Output file: %s\n", par_SR.outputfile);
+  fprintf(stderr, "Starting Sreport at: %s", asctime(timeinfo));
 #ifdef HAVE_RPKG
-  char * command = command_Sreport();
-  fprintf(stderr, "Running command: %s \n", command);
+  char *new_dir;
+  char * command = command_Sreport(&new_dir);
   int status;
-  if ((status = system(command)) != 0) {
-      fprintf(stderr, "Something went wrong when executing R script.\n");
-      fprintf(stderr, "Most probably, a html file will not be generated.\n");
-      fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
-      fprintf(stderr, "Exiting program.\n");
-      exit(EXIT_FAILURE);
+  if (command[0] != '\0') {
+    fprintf(stderr, "- Running command: %s \n", command);
+    if ((status = system(command)) != 0) {
+        fprintf(stderr, "Something went wrong when executing R script.\n");
+        fprintf(stderr, "Most probably, a html file will not be generated.\n");
+        fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+        fprintf(stderr, "Exiting program.\n");
+        exit(EXIT_FAILURE);
+    }
+  }
+  // Removing tmp directory
+  free(command);
+  char rm_cmd[MAX_FILENAME];
+  snprintf(rm_cmd, MAX_FILENAME, "rm -fr %s", new_dir);
+  if ( (status = system(rm_cmd)) != 0) {
+    fprintf(stderr, "Something went wrong when trying to delete temporary folder %s.\n", new_dir);
+    fprintf(stderr, "Exiting program.\n");
+    exit(EXIT_FAILURE);
   }
 #else
   fprintf(stderr, "WARNING: html reports are NOT being generated.\n");
   fprintf(stderr, "         Dependencies not fulfilled.\n");
 #endif
+
 
   // Obtaining elapsed time
   end = clock();
